@@ -1,0 +1,4 @@
+*.pyc 
+flexric/flexric-jyd/build/
+srsRAN/srsran-jyd/build/
+.vscode/
