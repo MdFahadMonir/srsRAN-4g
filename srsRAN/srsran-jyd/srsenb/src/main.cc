@@ -673,9 +673,11 @@ void fill_mac_stats(mac_ind_data_t* ind)
     dst->wb_cqi = src->dl_cqi;        // LTE CQI
     dst->phr = (int8_t)src->phr;      // LTE Power Headroom Report
 
-    // Throughput metrics (4G specific)
-    dst->dl_aggr_tbs = (float)src->tx_brate;  // DL throughput
-    dst->ul_aggr_tbs = (float)src->rx_brate;  // UL throughput
+    // Throughput metrics (4G specific) - convert accumulated bits to bit rate
+    // Same calculation as metrics_stdout.cc: tx_brate / (nof_tti * 1e-3)
+    float time_period = (src->nof_tti > 0) ? (src->nof_tti * 1e-3f) : 1.0f;  // in seconds
+    dst->dl_aggr_tbs = (float)src->tx_brate / time_period;  // DL bit rate (bps)
+    dst->ul_aggr_tbs = (float)src->rx_brate / time_period;  // UL bit rate (bps)
 
 
 
