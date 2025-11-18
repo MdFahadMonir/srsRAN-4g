@@ -421,15 +421,29 @@ void sched_ue::metrics_read(mac_ue_metrics_t& metrics)
   sched_ue_cell& pcell  = cells[cfg.supported_cc_list[0].enb_cc_idx];
   // metrics.ul_snr_offset = pcell.get_ul_snr_offset();
   // metrics.dl_cqi_offset = pcell.get_dl_cqi_offset();
-  // metrics.allocated_rb = allocatedRbs.value();
-  if(alloc_rbs > total_prbs)
-    metrics.allocated_prbs = 0;
-  else
-    metrics.allocated_prbs = alloc_rbs;
+  
+  // Use rolling average of allocated PRBs instead of instantaneous value
+  std::lock_guard<std::mutex> lock(rb_mutex);
+  uint32_t avg_prbs = allocatedRbs.value();
+  uint32_t count = allocatedRbs.count();
+  
+  // Use instantaneous value if rolling average is empty (no recent allocations)
+  if(count == 0) {
+    // Use last known value (alloc_rbs) instead of 0
+    if(alloc_rbs > total_prbs)
+      metrics.allocated_prbs = 0;
+    else
+      metrics.allocated_prbs = alloc_rbs;
+  } else {
+    if(avg_prbs > total_prbs)
+      metrics.allocated_prbs = 0;
+    else
+      metrics.allocated_prbs = avg_prbs;
+  }
     
   metrics.tti = tti_track.to_uint();
-  std::lock_guard<std::mutex> lock(rb_mutex);
-  allocatedRbs.reset();
+  // Don't reset immediately - keep values for next read
+  // allocatedRbs.reset();
 }
 
 int sched_ue::generate_format1_common(uint32_t                          pid,
@@ -457,6 +471,14 @@ int sched_ue::generate_format1_common(uint32_t                          pid,
 
     data->tbs[0] = (uint32_t)tbinfo.tbs_bytes;
     data->tbs[1] = 0;
+    
+    // Track allocated PRBs (same as format2a)
+    alloc_rbs = count_prb_per_tb(user_mask);
+    total_prbs = cell_nof_rbg_to_prb(user_mask.size());
+    
+    std::lock_guard<std::mutex> lock(rb_mutex);
+    allocatedRbs.push(alloc_rbs);
+    tti_track = tti_tx_dl;
   }
   return tbinfo.tbs_bytes;
 }
@@ -578,7 +600,7 @@ int sched_ue::generate_format2a(uint32_t                          pid,
   alloc_rbs = count_prb_per_tb(user_mask);
   total_prbs =  cell_nof_rbg_to_prb(user_mask.size());
 
-  // std::cout << "Number of Allocated Prbs: " << alloc_rbs << std::endl;
+  std::cout << "Number of Allocated DL PRBs: " << alloc_rbs << std::endl;
   std::lock_guard<std::mutex> lock(rb_mutex);
   // if(allocatedRbs.count() >= 20)
   // {
