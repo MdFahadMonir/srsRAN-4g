@@ -1,0 +1,13 @@
+rnti
+phr
+dl_tbs
+ul_tbs
+dl_aggr_prb
+wb_cqi
+pusch_snr
+pucch_snr
+ul_rssi
+dl_bler
+ul_bler
+dl_mcs
+ul_mcs

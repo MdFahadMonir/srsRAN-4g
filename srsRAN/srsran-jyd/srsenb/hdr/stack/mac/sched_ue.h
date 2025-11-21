@@ -229,7 +229,7 @@ private:
   bool phy_config_dedicated_enabled = false;
 
   //Added for O-RAN testing
-  srsran::rolling_average<u_int32_t> allocatedRbs;
+  srsran::rolling_average<double> allocatedRbs;  // Use double to avoid integer overflow/underflow issues
   uint32_t alloc_rbs;
   tti_point tti_track;
   std::mutex rb_mutex;

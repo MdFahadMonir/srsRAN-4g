@@ -350,9 +350,9 @@ bool cc_worker::decode_pusch_rnti(stack_interface_phy_lte::ul_sched_grant_t& ul_
 
   // Save statistics only if data was provided
   if (ul_grant.data != nullptr) {
-    // Debug: Print raw SNR and RSRP from channel estimator (before any averaging)
-    //printf("RAW PUSCH SNR: rnti=0x%x, chest_res.snr_db=%.2f dB, rsrp_dBfs=%.2f dB, mcs=%d\n", 
-    //       rnti, enb_ul.chest_res.snr_db, enb_ul.chest_res.rsrp_dBfs, ul_grant.dci.tb.mcs_idx);
+    // Note: rsrp_dBfs is RSRP in dB relative to digital sample scale (not true dBfs)
+    // Values are positive (63-70 dB) because input samples aren't normalized to ADC full scale
+    // For ML: relative differences matter, not absolute scale - keep as-is
     
     // Save metrics stats (use RSRP as RSSI for uplink)
     ue_db[rnti]->metrics_ul(ul_grant.dci.tb.mcs_idx, enb_ul.chest_res.rsrp_dBfs, enb_ul.chest_res.snr_db, pusch_res.avg_iterations_block);

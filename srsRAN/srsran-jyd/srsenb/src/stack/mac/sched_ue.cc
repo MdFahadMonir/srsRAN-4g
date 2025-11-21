@@ -424,21 +424,29 @@ void sched_ue::metrics_read(mac_ue_metrics_t& metrics)
   
   // Use rolling average of allocated PRBs instead of instantaneous value
   std::lock_guard<std::mutex> lock(rb_mutex);
-  uint32_t avg_prbs = allocatedRbs.value();
+  uint32_t avg_prbs = static_cast<uint32_t>(allocatedRbs.value() + 0.5);  // Round to nearest integer
   uint32_t count = allocatedRbs.count();
+  
+  // Debug: print PRB allocation details
+  printf("PRB Debug: rnti=0x%x, avg_prbs=%u, count=%u, alloc_rbs=%u, total_prbs=%u\n",
+         rnti, avg_prbs, count, alloc_rbs, total_prbs);
   
   // Use instantaneous value if rolling average is empty (no recent allocations)
   if(count == 0) {
     // Use last known value (alloc_rbs) instead of 0
-    if(alloc_rbs > total_prbs)
+    if(alloc_rbs > total_prbs) {
+      printf("  -> Setting to 0 (instantaneous alloc_rbs %u > total_prbs %u)\n", alloc_rbs, total_prbs);
       metrics.allocated_prbs = 0;
-    else
+    } else {
       metrics.allocated_prbs = alloc_rbs;
+    }
   } else {
-    if(avg_prbs > total_prbs)
+    if(avg_prbs > total_prbs) {
+      printf("  -> Setting to 0 (avg_prbs %u > total_prbs %u)\n", avg_prbs, total_prbs);
       metrics.allocated_prbs = 0;
-    else
+    } else {
       metrics.allocated_prbs = avg_prbs;
+    }
   }
     
   metrics.tti = tti_track.to_uint();

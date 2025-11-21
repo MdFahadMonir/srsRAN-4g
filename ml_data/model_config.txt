@@ -1,0 +1,27 @@
+Model Configuration
+============================================================
+
+Input Features (6):
+  1. dl_tbs
+  2. ul_tbs
+  3. pusch_snr
+  4. pucch_snr
+  5. ul_rssi
+  6. ul_mcs
+
+Target: Future RSSI (ul_rssi at t+1)
+
+Model Architecture:
+  Input layer: 6 neurons
+  Hidden layer 1: 64 neurons (ReLU)
+  Hidden layer 2: 32 neurons (ReLU)
+  Output layer: 1 neuron (linear)
+
+Training Configuration:
+  Solver: adam
+  Max iterations: 500
+  Early stopping: Yes
+  Train/Test split: 90/10
+
+Performance Metrics:
+  Test MSE: 2.113088

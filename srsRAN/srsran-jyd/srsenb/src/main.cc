@@ -690,8 +690,26 @@ void fill_mac_stats(mac_ind_data_t* ind)
     dst->dl_harq[4] = src->tx_errors;     // DL errors
     dst->ul_harq[4] = src->rx_errors;     // UL errors
 
+    // Calculate BLER (Block Error Rate) - Instantaneous per period
+    // BLER = errors / (successful_packets + errors) for THIS metrics period only
+    uint32_t dl_total_blocks = src->tx_pkts + src->tx_errors;
+    uint32_t ul_total_blocks = src->rx_pkts + src->rx_errors;
+    
+    if (dl_total_blocks > 0) {
+      dst->dl_bler = (float)src->tx_errors / (float)dl_total_blocks;
+    } else {
+      dst->dl_bler = 0.0f;
+    }
+    
+    if (ul_total_blocks > 0) {
+      dst->ul_bler = (float)src->rx_errors / (float)ul_total_blocks;
+    } else {
+      dst->ul_bler = 0.0f;
+    }
+
     // Resource allocation
     dst->dl_aggr_prb = src->allocated_prbs;  // PRB allocation
+   
 
     // Always use PHY metrics for MCS and SNR in 4G/LTE
     if (i < m.phy.size()) {
