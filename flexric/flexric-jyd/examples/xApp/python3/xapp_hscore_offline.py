@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split
 # ==========================================================
 #                   FIXED CONFIGURATION
 # ==========================================================
-RUN_TIME        = 400          # seconds
+RUN_TIME        = 120          # seconds
 SEQ_LEN         = 10
 SCALER_TYPE     = "minmax"     # one of: "none", "standard", "minmax"
 BATCH_SIZE      = 128
