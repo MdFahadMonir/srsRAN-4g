@@ -21,24 +21,24 @@ from sklearn.model_selection import train_test_split
 # ==========================================================
 #                   FIXED CONFIGURATION
 # ==========================================================
-RUN_TIME        = 120          # seconds
+RUN_TIME        = 400          # seconds
 SEQ_LEN         = 10
 SCALER_TYPE     = "minmax"     # one of: "none", "standard", "minmax"
 BATCH_SIZE      = 128
 EPOCHS          = 30
-LR              = 1e-3
+LR              = 0.005
 HS_TRAIN_FRAC   = 0.6          # H-score train fraction
 PS_RESERVE_FRAC = 0.2          # reserved for future prediction split (create only)
-RESERVOIR_SIZE  = 32
-SPECTRAL_RADIUS = 0.9
-SPARSITY        = 0.8
-LEAKY           = 0.2
+RESERVOIR_SIZE  = 64
+SPECTRAL_RADIUS = 0.157
+SPARSITY        = 0.138
+LEAKY           = 0.797
 OUTPUT_DIM      = 8            # Output dimension for f-net and g-net
 ML_OUT_DIR      = "/home/fahad/srsRAN_4g/ml_data"
 SEED            = 2
 DEVICE_MODE     = "auto"        # "auto" -> cuda if available else cpu
 FEATURE_NAMES   = [
-    "rnti","phr","dl_tbs","ul_tbs","dl_aggr_prb",
+    "phr","dl_tbs","ul_tbs","dl_aggr_prb",
     "wb_cqi","pusch_snr","pucch_snr","ul_rssi",
     "dl_bler","ul_bler","dl_mcs","ul_mcs",
 ]
@@ -180,7 +180,6 @@ def neg_hscore(f, g):
 # ==========================================================
 def train_fg_hscore(model, dl_train, dl_test, epochs, lr, print_every=5):
     opt = optim.AdamW(model.parameters(), lr=lr)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=0)
 
     train_losses = []
     test_losses = []
@@ -213,11 +212,8 @@ def train_fg_hscore(model, dl_train, dl_test, epochs, lr, print_every=5):
         te /= len(dl_test)
         test_losses.append(te)
 
-        sched.step()
-
         if ep % print_every == 0 or ep == epochs:
-            current_lr = opt.param_groups[0]['lr']
-            print(f"[Epoch {ep:02d}/{EPOCHS}] Train Loss: {tr:.6f} | Test Loss: {te:.6f} | LR: {current_lr:.6f}")
+            print(f"[Epoch {ep:02d}/{EPOCHS}] Train Loss: {tr:.6f} | Test Loss: {te:.6f}")
 
     return train_losses, test_losses
 
@@ -237,7 +233,6 @@ class MACCallback(ric.mac_cb):
             
             mac_data = {
                 'timestamp': t_mac,
-                'rnti': stats.rnti,
                 'phr': stats.phr,
                 'dl_tbs': stats.dl_aggr_tbs,
                 'ul_tbs': stats.ul_aggr_tbs,
@@ -279,11 +274,17 @@ class RLCCallback(ric.rlc_cb):
 def make_sliding_windows(dataset, seq_len):
     """
     Given dataset shape (T, F) with newest → oldest ordering, return:
-        X: (N, seq_len, F) - each window contains seq_len consecutive timesteps
-        Y: (N, F) - target is the first row of the next window, i.e. Y[i] = X[i+1, 0, :]
+        X: (N, seq_len, F) - input window of older samples
+        Y: (N, F) - target (one-step-ahead, newer than X)
     where N = T - seq_len
     
-    Note: For the last window (i = N-1), Y is the row immediately after its window ends.
+    TRUE one-step-ahead prediction structure:
+        Y[i] = dataset[i] (newest sample, the target)
+        X[i] = dataset[i+1:i+1+seq_len] (next seq_len older samples)
+    
+    Example (seq_len=10):
+        dataset[0] = t100 (newest) → Y[0] (target)
+        dataset[1:11] = [t99, t98, ..., t90] → X[0] (input window)
     """
     T, F = dataset.shape
     N = T - seq_len
@@ -295,15 +296,10 @@ def make_sliding_windows(dataset, seq_len):
     Y = np.zeros((N, F), dtype=np.float32)
 
     for i in range(N):
-        # X[i] contains rows [i, i+1, ..., i+seq_len-1]
-        X[i] = dataset[i : i + seq_len, :]
-        
-        # Y[i] is the first row of the next window (i.e., X[i+1, 0, :])
-        # which is dataset[i+1] when i < N-1, or dataset[i+seq_len] when i == N-1
-        if i < N - 1:
-            Y[i] = dataset[i + 1, :]  # First row of next window
-        else:
-            Y[i] = dataset[i + seq_len, :]  # Row after last window ends
+        # Y is the target (one step ahead, more recent)
+        Y[i] = dataset[i, :]
+        # X is the input window (seq_len samples starting from i+1, older than Y)
+        X[i] = dataset[i + 1 : i + 1 + seq_len, :]
 
     return X, Y
 
@@ -489,12 +485,9 @@ def main():
     print(f"  Y shape: {Y.shape} (N={N}, F={F})")
 
     # Preview first 3 windows
-    print(f"\n  Preview of sliding windows (first 3, newest → oldest):")
+    print(f"\n  Preview of sliding windows (first 3, one-step-ahead structure):")
     for t in range(min(3, N)):
-        if t < N - 1:
-            print(f"    Window {t}: rows [{t}:{t+SEQ_LEN-1}] → target = first row of next window (row {t+1})")
-        else:
-            print(f"    Window {t}: rows [{t}:{t+SEQ_LEN-1}] → target = row after window ends (row {t+SEQ_LEN})")
+        print(f"    Window {t}: Y=row[{t}] (target) ← X=rows[{t+1}:{t+SEQ_LEN}] (input)")
 
     # Save X, Y
     x_path = os.path.join(ML_OUT_DIR, f"X_seq{SEQ_LEN}.npy")
@@ -564,7 +557,6 @@ def main():
     # Train
     print(f"\nStarting training for {EPOCHS} epochs...")
     print(f"  Optimizer: AdamW (lr={LR})")
-    print(f"  Scheduler: CosineAnnealingLR")
     print("-" * 80)
 
     train_losses, test_losses = train_fg_hscore(
