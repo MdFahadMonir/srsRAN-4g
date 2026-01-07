@@ -42,13 +42,13 @@ LEAKY = 0.797
 TARGET_KPI_INDEX = 7  # ul_rssi is at index 7 in FEATURE_NAMES
 
 # Training configuration
-TRAINING_INTERVAL = 30  # Retrain h-net every 45 seconds (faster adaptation)
+TRAINING_INTERVAL = 30  # Retrain h-net every 30 seconds (faster adaptation)
 MIN_SAMPLES_FOR_TRAINING = 400  # Minimum samples before first training
-BUFFER_SIZE = 3000  # Rolling buffer size (1200 samples = ~12 seconds of data @ 10ms interval)
+BUFFER_SIZE = 3000  # Rolling buffer size (3000 samples = ~30 seconds of data @ 10ms interval)
 
 # Batch and optimization
 BATCH_SIZE = 128
-EPOCHS = 30
+EPOCHS = 10
 LR = 0.005
 HNET_PATIENCE = 10
 
@@ -401,8 +401,8 @@ class MACCallback(ric.mac_cb):
         if len(ind.ue_stats) > 0:
             stats_data = ind.ue_stats[0]
             
-            # ul_rssi is already in dBm (no scaling needed)
-            ul_rssi = stats_data.ul_rssi / 10.0
+            # ul_rssi is in dBm (MinMaxScaler will handle normalization)
+            ul_rssi = stats_data.ul_rssi
             
             # Debug logging for first 5 samples to verify values
             if self.sample_count < 5:
@@ -742,7 +742,7 @@ def trainer_thread():
                         EPOCHS, LR, criterion, TARGET_KPI_INDEX
                     )
                     
-                    # Calculate training metrics (inverse scaled)
+                    # Calculate training metrics (inverse scaled to original dBm)
                     p_train, gt_train = predict_nestedh(frozen_model, hnet, dl_train, OUTPUT_DIM, TARGET_KPI_INDEX)
                     p_train, gt_train = inverse_scale_data(p_train, gt_train, scaler_y, TARGET_KPI_INDEX)
                     
@@ -754,6 +754,7 @@ def trainer_thread():
                     print(f"[Trainer] Calculating validation metrics on hold-out set...")
                     p_val, gt_val = predict_nestedh(frozen_model, hnet, dl_test, OUTPUT_DIM, TARGET_KPI_INDEX)
                     p_val, gt_val = inverse_scale_data(p_val, gt_val, scaler_y, TARGET_KPI_INDEX)
+                    
                     validation_mse, validation_rmse, validation_r2, validation_corr = calc_metric(gt_val, p_val)
                     print(f"[Trainer] Validation Metrics: MSE={validation_mse:.6f}, RMSE={validation_rmse:.6f}, R2={validation_r2:.6f}, Corr={validation_corr:.6f}")
                     
@@ -940,11 +941,11 @@ def test_thread():
                     dummy = np.zeros((1, len(FEATURE_NAMES)))
                     dummy[:, TARGET_KPI_INDEX] = Y_pred_scaled[0, 0]
                     
-                    # Inverse transform to get unscaled prediction (in dBm)
+                    # Inverse transform to get unscaled prediction (in original dBm)
                     Y_pred_unscaled_full = local_scaler_y.inverse_transform(dummy)
                     Y_pred_unscaled = Y_pred_unscaled_full[0, TARGET_KPI_INDEX]
                     
-                    # Calculate error (both values now in dBm)
+                    # Calculate error (both values in original dBm scale)
                     error = Y_actual_unscaled - Y_pred_unscaled
                     squared_error = error ** 2
                     
